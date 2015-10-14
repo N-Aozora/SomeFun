@@ -5,33 +5,36 @@ function getFileImg(fileBtn,viewbox){
 	var viewbox=document.getElementById(viewbox);
 	var Img;	//存放载入的图片
 	var canvas;
+
 	var ctx;
 	var centerPoint={x:null,y:null};	//画布中心点
 	var r=null;		//编辑区域半径
 	//编辑区域4个边角点坐标
 	var cornerpoint={leftTop:{x:null,y:null},rightTop:{x:null,y:null},leftBottom:{x:null,y:null},rightBottom:{x:null,y:null}};	
 
-	fileBtn.onchange=function(e){
+	addEvent(fileBtn,"change",function(e){
 		var e=e||window.event;
 		processFiles(this.files);
-	}
+	})
 
-	viewbox.ondragenter=function(e){
+	addEvent(viewbox,"dragenter",function(e){
 		var e=e||window.event;
 		e.stopPropagation();
 		e.preventDefault();
-	}
-	viewbox.ondragover=function(e){
+	})
+
+	addEvent(viewbox,"dragover",function(e){
 		var e=e||window.event;
 		e.stopPropagation();
 		e.preventDefault();
-	}
-	viewbox.ondrop=function(e){
+	})
+
+	addEvent(viewbox,"drop",function(e){
 		var e=e||window.event;
 		e.stopPropagation();
 		e.preventDefault();
 		processFiles(e.dataTransfer.files);
-	}
+	})
 
 	function processFiles(files){
 		var file=files[0];
@@ -41,7 +44,7 @@ function getFileImg(fileBtn,viewbox){
 			Img=new Image();
 			Img.src=e.target.result;
 			Img.onload=function(){
-				createCanvas(Img)
+				createCanvas(Img);
 			}
 		}
 		reader.readAsDataURL(file);
@@ -61,13 +64,18 @@ function getFileImg(fileBtn,viewbox){
 		ctx.drawImage(Img,0,0,canvas.width,canvas.height);
 		mask();
 		fillOuterContour();
-		fillOuterPoint();
 		fillClipArcImg(centerPoint.x,centerPoint.y,r);
 		fillDashed(centerPoint.x-r,centerPoint.y-r/3,centerPoint.x+r,centerPoint.y-r/3,3,1);
 		fillDashed(centerPoint.x-r,centerPoint.y+r/3,centerPoint.x+r,centerPoint.y+r/3,3,1);
 		fillDashed(centerPoint.x-r/3,centerPoint.y-r,centerPoint.x-r/3,centerPoint.y+r,3,1);
 		fillDashed(centerPoint.x+r/3,centerPoint.y-r,centerPoint.x+r/3,centerPoint.y+r,3,1);
 		fillArcDashed(centerPoint.x,centerPoint.y,r,3,1);
+		fillOuterPoint();
+		addEvent(canvas,"mousemove",function(e){
+			var e=e||window.event;
+			var o=getCoordinate(canvas,e.clientX,e.clientY);
+			checkCursorStyle(o.x,o.y);
+		})
 	}
 
 	//根据图片设置canvas和宽高和垂直居中
@@ -197,5 +205,108 @@ function getFileImg(fileBtn,viewbox){
 		ctx.drawImage(Img,0,0,canvas.width,canvas.height);
 		ctx.restore();
 	}
+
+	//添加事件
+	function addEvent(element,event,fun){
+		if(window.addEventListener){
+			element.addEventListener(event,fun,false);
+		}else{
+			element.attachEvent("on"+event,fun);
+		}
+	}
+
+	//移除事件
+	function removeEvent(element,event,fun){
+		if(window.removeEventListener){
+			element.removeEventListener(event,fun,false);
+		}else{
+			element.detachEvent("on"+event,fun);
+		}
+	}
+
+	//获取鼠标相对元素的坐标
+	function getCoordinate(element,x,y){
+		var x=x-element.getBoundingClientRect().left;
+		var y=y-element.getBoundingClientRect().top;
+		return {x:x,y:y};
+	}
+
+	//检测鼠标canvas的关键点上的样式
+	function checkCursorStyle(x,y){
+		var dir=checkCursorInPoint(x,y);
+		if(dir){
+			switch(dir){
+				case "leftTop":
+					canvas.style.cursor="nw-resize";
+					break;
+				case "rightTop":
+					canvas.style.cursor="ne-resize";
+					break;
+				case "leftBottom":
+					canvas.style.cursor="sw-resize";
+					break;
+				case "rightBottom":
+					canvas.style.cursor="se-resize";
+					break;
+				case "left":
+					canvas.style.cursor="s-resize";
+					break;
+				case "right":
+					canvas.style.cursor="e-resize";
+					break;
+				case "top":
+					canvas.style.cursor="n-resize";
+					break;
+				case "bottom":
+					canvas.style.cursor="w-resize";
+					break;
+			}
+		}else if(x>cornerpoint.leftTop.x&&x<cornerpoint.rightTop.x&&y>cornerpoint.leftTop.y&&y<cornerpoint.leftBottom.y){
+			canvas.style.cursor="move";
+		}else {
+			canvas.style.cursor="auto";
+		}
+	}
+
+	//判断鼠标是否处在轮廓点上
+	function checkCursorInPoint(x,y){
+		var _x=0;
+		var _y=0;
+		var n;
+		for(var i in cornerpoint){
+			if(cornerpoint.hasOwnProperty(i)){
+				switch(i){
+					case "leftTop" :
+						_x=cornerpoint[i].x+r;
+						_y=cornerpoint[i].y;
+						n="top";
+						break;
+					case "rightTop" :
+						_y=cornerpoint[i].y+r;
+						_x=cornerpoint[i].x;
+						n="right";
+						break;
+					case "leftBottom" :
+						_y=cornerpoint[i].y-r;
+						_x=cornerpoint[i].x;
+						n="bottom";
+						break;
+					case "rightBottom" :
+						_x=cornerpoint[i].x-r;
+						_y=cornerpoint[i].y;
+						n="left";
+						break;
+				}
+				
+				if(Math.abs(cornerpoint[i].x-x)<=2&&Math.abs(cornerpoint[i].y-y)<=2){
+					return i;
+				}else if(Math.abs(_x-x)<=2&&Math.abs(_y-y)<=2){
+					return n;
+				}
+			}
+		}
+		return false;
+	}
+
 }
 
