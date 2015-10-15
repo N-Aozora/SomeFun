@@ -1,8 +1,10 @@
 //JavaScript
 
-function getFileImg(fileBtn,viewbox){
+function getFileImg(fileBtn,viewbox,finishBtn,pushBtn){
 	var fileBtn=document.getElementById(fileBtn);
 	var viewbox=document.getElementById(viewbox);
+	var finishBtn=document.getElementById(finishBtn);
+	var pushBtn=document.getElementById(pushBtn);
 	var Img;	//存放载入的图片
 	var canvas;
 	var ctx;
@@ -10,7 +12,10 @@ function getFileImg(fileBtn,viewbox){
 	var r=null;		//编辑区域半径
 	var dir=null;	//编辑方向
 	var isFill=false;	//是不是重绘
+	var isFilling=false;	//是否在重绘中
 	var isReelect=true;		//是否重选图片
+	var isReverse=false;	//是否反向缩放
+	var isMousedown=false;	//是否按下鼠标
 	//编辑区域4个边角点坐标
 	var cornerpoint={leftTop:{x:null,y:null},rightTop:{x:null,y:null},leftBottom:{x:null,y:null},rightBottom:{x:null,y:null}};
 	var lastX=null;
@@ -40,6 +45,37 @@ function getFileImg(fileBtn,viewbox){
 		processFiles(e.dataTransfer.files);
 	})
 
+	addEvent(finishBtn,"click",function(){
+		if(!canvas){
+			alert("请先上传图片！");
+			return;
+		}else{
+			var w=(cornerpoint.rightTop.x-cornerpoint.leftTop.x);
+			var h=(cornerpoint.leftBottom.y-cornerpoint.leftTop.y);
+			var x1=cornerpoint.leftTop.x/canvas.width*Img.width;
+			var y1=cornerpoint.leftTop.y/canvas.height*Img.height;
+			var x2=cornerpoint.rightBottom.x/canvas.width*Img.width;
+			var y2=cornerpoint.rightBottom.y/canvas.height*Img.height;
+			setCanvas(w,h);
+			ctx.clearRect(0,0,canvas.width,canvas.height);
+			ctx.drawImage(Img,x1,y1,x2,y2,0,0,canvas.width,canvas.height);
+			removeEvent(canvas,"mousemove",mousemoveEvent);
+			removeEvent(canvas,"mousedown",mousedownEvent);
+			removeEvent(canvas,"mousemove",downmoveEvent);
+			removeEvent(document.documentElement,"mouseup",mouseupEvent);
+			addEvent(pushBtn,"click",function(){
+				var data=canvas.toDataURL();
+				var xmlhttp=new XMLHttpRequest();
+				xmlhttp.open("POST","avatarUpload_example.php",true);
+				xmlhttp.onreadychange=function(){
+					alert(xmlhttp.responseText);
+					viewbox.removeChild(canvas);
+				}
+				xmlhttp.send(JSON.stringify({title:"avatar",data:data}));
+			})
+		}
+	})
+
 	function processFiles(files){
 		var file=files[0];
 		var reader=new FileReader();
@@ -49,14 +85,16 @@ function getFileImg(fileBtn,viewbox){
 			Img.src=e.target.result;
 			Img.onload=function(){
 				isReelect=true;
-				createCanvas();
+				fillCanvas();
 			}
 		}
 		reader.readAsDataURL(file);
 	}
 
 	//创建canvas
-	function createCanvas(){
+	function fillCanvas(){
+		if(isFilling==true) return;
+		isFilling=true;
 		if(!viewbox.getElementsByTagName("canvas")[0]){
 			canvas=document.createElement("canvas");
 			ctx=canvas.getContext("2d");
@@ -66,11 +104,20 @@ function getFileImg(fileBtn,viewbox){
 			setCanvas(Img.width,Img.height);
 			centerPoint.x=canvas.width/2;
 			centerPoint.y=canvas.height/2;
+			removeEvent(canvas,"mousemove",downmoveEvent);
+			canvas.style.cursor="auto";
+			lastX=null;
+			lastY=null;
+			isReverse=false;
+			addEvent(canvas,"mousemove",mousemoveEvent);
 		}
 		ctx.clearRect(0,0,canvas.width,canvas.height);
 		ctx.drawImage(Img,0,0,canvas.width,canvas.height);
 		mask();
 		fillOuterContour();
+		if(isMousedown){
+			fillRectClipMask();
+		}
 		fillClipArcImg(centerPoint.x,centerPoint.y,r);
 		fillDashed(centerPoint.x-r,centerPoint.y-r/3,centerPoint.x+r,centerPoint.y-r/3,3,1);
 		fillDashed(centerPoint.x-r,centerPoint.y+r/3,centerPoint.x+r,centerPoint.y+r/3,3,1);
@@ -79,6 +126,7 @@ function getFileImg(fileBtn,viewbox){
 		fillArcDashed(centerPoint.x,centerPoint.y,r,3,1);
 		fillOuterPoint();
 		if(!isFill) addEvent(canvas,"mousemove",mousemoveEvent);
+		isFilling=false;
 	}
 
 	//根据图片设置canvas和宽高和垂直居中
@@ -108,7 +156,7 @@ function getFileImg(fileBtn,viewbox){
 
 	//绘制编辑区域外轮廓
 	function fillOuterContour(){
-		r=!r?Math.round(Math.min(canvas.width,canvas.height)*8/10/2):r;		//初始半径为canvas最小边的80%的一半
+		r=isReelect?Math.round(Math.min(canvas.width,canvas.height)*8/10/2):r;		//初始半径为canvas最小边的80%的一半
 		var x=centerPoint.x;	//中心点x坐标
 		var y=centerPoint.y;	//中心点y坐标
 		cornerpoint.leftTop.x=x-r;
@@ -196,6 +244,27 @@ function getFileImg(fileBtn,viewbox){
 		ctx.restore();
 	}
 
+	//中心方形编辑区域的遮罩，拖动时透明度变为0.2
+	function fillRectClipMask(){
+		var x=cornerpoint.leftTop.x;
+		var y=cornerpoint.leftTop.y;
+		ctx.save();
+		ctx.strokeStyle="transparent";
+		ctx.beginPath();
+		ctx.moveTo(x,y);
+		ctx.lineTo(cornerpoint.rightBottom.x,y);
+		ctx.lineTo(cornerpoint.rightBottom.x,cornerpoint.rightBottom.y);
+		ctx.lineTo(x,cornerpoint.leftBottom.y);
+		ctx.closePath();
+		ctx.stroke();
+		ctx.clip();
+		ctx.drawImage(Img,0,0,canvas.width,canvas.height);
+		ctx.fillStyle="#000";
+		ctx.globalAlpha=0.2;
+		ctx.fillRect(x,y,cornerpoint.rightBottom.x-x,cornerpoint.rightBottom.y-y);
+		ctx.restore();
+	}
+
 	//因为覆盖了一层半透明遮罩，用剪切区域重新绘制图形将中间的圆形区域露出来
 	function fillClipArcImg(x,y,r){
 		ctx.save();
@@ -234,36 +303,44 @@ function getFileImg(fileBtn,viewbox){
 		checkCursorStyle(o.x,o.y);
 		if(canvas.style.cursor!="auto"){
 			addEvent(canvas,"mousedown",mousedownEvent);
-			addEvent(canvas,"mouseup",mouseupEvent);
+			addEvent(document.documentElement,"mouseup",mouseupEvent);
 		}else{
 			removeEvent(canvas,"mousedown",mousedownEvent);
-			removeEvent(canvas,"mouseup",mouseupEvent);
+			removeEvent(document.documentElement,"mouseup",mouseupEvent);
 		}
 	}
 
-	//鼠标移到关键点上的点击事件
+	//鼠标移到关键点上的点下事件
 	function mousedownEvent(){
 		removeEvent(canvas,"mousemove",mousemoveEvent);
 		addEvent(canvas,"mousemove",downmoveEvent);
 	}
 
 	//鼠标弹起时的事件
-	function mouseupEvent(){
+	function mouseupEvent(e){
+		var e=e||window.event;
+		var o=getCoordinate(canvas,e.clientX,e.clientY);
 		lastX=null;
 		lastY=null;
+		isReverse=false;
+		canvas.style.cursor="auto";
 		removeEvent(canvas,"mousemove",downmoveEvent);
 		addEvent(canvas,"mousemove",mousemoveEvent);
+		isMousedown=false;
+		checkCursorStyle(o.x,o.y);
+		fillCanvas();
 	}
 
 	//鼠标点下移动时的事件
 	function downmoveEvent(e){
 		var e=e||window.event;
 		var o=getCoordinate(canvas,e.clientX,e.clientY);
-		console.log(o);
 		var nowX=o.x;
 		var nowY=o.y;
 		var diffX;
 		var diffY;
+		var _diff;
+		isMousedown=true;
 		if(canvas.style.cursor=="move"){
 			if(lastX==null){
 				lastX=nowX;
@@ -280,9 +357,15 @@ function getFileImg(fileBtn,viewbox){
 			centerPoint.y+=diffY;
 			lastX=nowX;
 			lastY=nowY;
+			_diff=rebound();
+			if(_diff){
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			if(!isFilling) {
+				fillCanvas();
+			}
 			return;
 		}
 		if(dir=="leftTop"||dir=="rightTop"){
@@ -291,56 +374,110 @@ function getFileImg(fileBtn,viewbox){
 			centerPoint.x+=diffX/2;
 			centerPoint.y+=(dir=="leftTop")?diffX/2:-diffX/2;
 			r+=(dir=="leftTop")?-diffX/2:diffX/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir=(dir=="leftTop")?"rightBottom":"leftBottom";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}else if(dir=="leftBottom"||dir=="rightBottom"){
 			diffX=(dir=="leftBottom")?(nowX-cornerpoint.leftBottom.x):(nowX-cornerpoint.rightBottom.x);
 			if(isOverStep(diffX)) return;
 			centerPoint.x+=diffX/2;
 			centerPoint.y+=(dir=="leftBottom")?-diffX/2:diffX/2;
 			r+=(dir=="leftBottom")?-diffX/2:diffX/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir=(dir=="leftBottom")?"rightTop":"leftTop";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}else if(dir=="left"){
 			diffX=nowX-cornerpoint.leftTop.x;
 			if(isOverStep(diffX)) return;
 			centerPoint.x+=diffX/2;
 			r-=diffX/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir="right";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}else if(dir=="right"){
 			diffX=nowX-cornerpoint.rightTop.x;
 			if(isOverStep(diffX)) return;
 			centerPoint.x+=diffX/2;
 			r+=diffX/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir="left";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}else if(dir=="top"){
 			diffY=nowY-cornerpoint.leftTop.y;
-			if(isOverStep(diffY)) return;
+			if(isOverStep(diffX,diffY)) return;
 			centerPoint.y+=diffY/2;
 			r-=diffY/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir="bottom";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}else if(dir=="bottom"){
 			diffY=nowY-cornerpoint.leftBottom.y;
-			if(isOverStep(diffY)) return;
+			if(isOverStep(diffX,diffY)) return;
 			centerPoint.y+=diffY/2;
 			r+=diffY/2;
-			r=Math.abs(r);
+			if(r<0){
+				r=Math.abs(r);
+				isReverse=true;
+				dir="top";
+			}
+			_diff=rebound();
+			if(_diff){
+				r-=_diff[0];
+				centerPoint[_diff[1]]-=_diff[0];
+			}
 			isFill=true;
 			isReelect=false;
-			createCanvas();
+			fillCanvas();
 		}
 	}
 
@@ -444,17 +581,31 @@ function getFileImg(fileBtn,viewbox){
 	//判断是否超出边界
 	function isOverStep(diffx,diffy){
 		if(diffx<=0){
-			if((dir=="leftTop"||dir=="rightBottom")&&(cornerpoint.leftTop.x<=0||cornerpoint.leftTop.y<=0)) return true;
-			else if((dir=="leftBottom"||dir=="rightTop")&&(cornerpoint.leftTop.x<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
-			else if((dir=="left"||dir=="right")&&(cornerpoint.leftTop.x<=0||cornerpoint.leftTop.y<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
+			if((dir=="leftTop"||(dir=="rightBottom"&&isReverse))&&(cornerpoint.leftTop.x<=0||cornerpoint.leftTop.y<=0)) return true;
+			else if((dir=="leftBottom"||(dir=="rightTop"&&isReverse))&&(cornerpoint.leftTop.x<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
+			else if((dir=="left"||(dir=="right"&&isReverse))&&(cornerpoint.leftTop.x<=0||cornerpoint.leftTop.y<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
 		}else if(diffx>=0){
-			if((dir=="leftTop"||dir=="rightBottom")&&(cornerpoint.rightTop.x>=canvas.width||cornerpoint.rightBottom.y>=canvas.height)) return true;
-			else if((dir=="leftBottom"||dir=="rightTop")&&(cornerpoint.rightTop.x>=canvas.width||cornerpoint.rightTop.y<=0)) return true;
-			else if((dir=="left"||dir=="right")&&(cornerpoint.leftTop.x>=canvas.width||cornerpoint.leftTop.y<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
+			if(((dir=="leftTop"&&isReverse)||dir=="rightBottom")&&(cornerpoint.rightTop.x>=canvas.width||cornerpoint.rightBottom.y>=canvas.height)) return true;
+			else if(((dir=="leftBottom"&&isReverse)||dir=="rightTop")&&(cornerpoint.rightTop.x>=canvas.width||cornerpoint.rightTop.y<=0)) return true;
+			else if(((dir=="left"&&isReverse)||dir=="right")&&(cornerpoint.leftTop.x>=canvas.width||cornerpoint.leftTop.y<=0||cornerpoint.leftBottom.y>=canvas.height)) return true;
 		}else if(diffy<=0){
-			if((dir=="top"||dir=="bottom")&&(cornerpoint.leftTop.y<=0||cornerpoint.leftTop.x<=0||cornerpoint.rightTop.x>=canvas.canvas.width)) return true;
+			if((dir=="top"||(dir=="bottom"&&isReverse))&&(cornerpoint.leftTop.y<=0||cornerpoint.leftTop.x<=0||cornerpoint.rightTop.x>=canvas.width)) return true;
 		}else if(diffy>=0){
-			if((dir=="top"||dir=="bottom")&&(cornerpoint.leftBottom.y>=canvas.height||cornerpoint.leftTop.x<=0||cornerpoint.rightTop.x>=canvas.width)) return true;
+			if(((dir=="top"&&isReverse)||dir=="bottom")&&(cornerpoint.leftBottom.y>=canvas.height||cornerpoint.leftTop.x<=0||cornerpoint.rightTop.x>=canvas.width)) return true;
+		}
+		return false;
+	}
+
+	//拖动时若超出边界则在将其限制在边界处
+	function rebound(){
+		if(centerPoint.x-r<0){
+			return [(centerPoint.x-r)/2,"x"];
+		}else if(centerPoint.x+r>canvas.width){
+			return [(centerPoint.x+r-canvas.width)/2,"x"];
+		}else if(centerPoint.y-r<0){
+			return [(centerPoint.y-r)/2,"y"];
+		}else if(centerPoint.y+r>canvas.height){
+			return [(centerPoint.y+r-canvas.height)/2,"y"];
 		}
 		return false;
 	}
