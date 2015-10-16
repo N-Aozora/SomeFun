@@ -1,6 +1,6 @@
 //JavaScript
 
-function getFileImg(fileBtn,viewbox,finishBtn,pushBtn){
+function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 	var fileBtn=document.getElementById(fileBtn);
 	var viewbox=document.getElementById(viewbox);
 	var finishBtn=document.getElementById(finishBtn);
@@ -50,12 +50,30 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn){
 			alert("请先上传图片！");
 			return;
 		}else{
+			if(!canvas) return;
 			var w=(cornerpoint.rightTop.x-cornerpoint.leftTop.x);
 			var h=(cornerpoint.leftBottom.y-cornerpoint.leftTop.y);
-			var x1=cornerpoint.leftTop.x/canvas.width*Img.width;
-			var y1=cornerpoint.leftTop.y/canvas.height*Img.height;
-			var x2=cornerpoint.rightBottom.x/canvas.width*Img.width;
-			var y2=cornerpoint.rightBottom.y/canvas.height*Img.height;
+			var x1=Math.floor(cornerpoint.leftTop.x/canvas.width*Img.width);
+			var y1=Math.floor(cornerpoint.leftTop.y/canvas.height*Img.height);
+			var x2=Math.floor(cornerpoint.rightBottom.x/canvas.width*Img.width);
+			var y2=Math.floor(cornerpoint.rightBottom.y/canvas.height*Img.height);
+			if(x1<0){
+				x2-=x1;
+				x1=0;
+			}
+			if(x2>Img.width){
+				x1-=x2-Img.width;
+				x2=Img.width;
+			}
+			if(y1<0){
+				y2-=y1;
+				y1=0;
+			}
+			if(y2>Img.height){
+				y1-=y2-Img.height;
+				y2=Img.height;
+			}
+			console.log(w,h,x1,y1,x2,y2);
 			setCanvas(w,h);
 			ctx.clearRect(0,0,canvas.width,canvas.height);
 			ctx.drawImage(Img,x1,y1,x2,y2,0,0,canvas.width,canvas.height);
@@ -63,13 +81,17 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn){
 			removeEvent(canvas,"mousedown",mousedownEvent);
 			removeEvent(canvas,"mousemove",downmoveEvent);
 			removeEvent(document.documentElement,"mouseup",mouseupEvent);
-			addEvent(pushBtn,"click",function(){
+			addEvent(pushBtn,"click",function pushIma(){
 				var data=canvas.toDataURL();
 				var xmlhttp=new XMLHttpRequest();
-				xmlhttp.open("POST","avatarUpload_example.php",true);
-				xmlhttp.onreadychange=function(){
-					alert(xmlhttp.responseText);
-					viewbox.removeChild(canvas);
+				xmlhttp.open("POST",method,true);
+				xmlhttp.onreadystatechange=function(){
+					if(xmlhttp.readyState==4&&xmlhttp.status==200){
+						alert(xmlhttp.responseText);
+						viewbox.removeChild(canvas);
+						removeEvent(pushBtn,"click",pushIma);
+						canvas=null;
+					}
 				}
 				xmlhttp.send(JSON.stringify({title:"avatar",data:data}));
 			})
