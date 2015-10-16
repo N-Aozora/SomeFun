@@ -1,5 +1,5 @@
 //JavaScript
-
+//参数说明：上传按钮,容器，完成编辑按钮，提交按钮，后台地址
 function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 	var fileBtn=document.getElementById(fileBtn);
 	var viewbox=document.getElementById(viewbox);
@@ -16,10 +16,14 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 	var isReelect=true;		//是否重选图片
 	var isReverse=false;	//是否反向缩放
 	var isMousedown=false;	//是否按下鼠标
+	var isFinish=false;		//是否点击了完成按钮
 	//编辑区域4个边角点坐标
 	var cornerpoint={leftTop:{x:null,y:null},rightTop:{x:null,y:null},leftBottom:{x:null,y:null},rightBottom:{x:null,y:null}};
 	var lastX=null;
 	var lastY=null;
+
+	finishBtn.disabled=true;
+	pushBtn.disabled=true;
 
 	addEvent(fileBtn,"change",function(e){
 		var e=e||window.event;
@@ -48,6 +52,8 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 	addEvent(finishBtn,"click",function(){
 		if(!canvas){
 			alert("请先上传图片！");
+			return;
+		}else if(isFinish) {
 			return;
 		}else{
 			if(!canvas) return;
@@ -81,24 +87,34 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 			removeEvent(canvas,"mousedown",mousedownEvent);
 			removeEvent(canvas,"mousemove",downmoveEvent);
 			removeEvent(document.documentElement,"mouseup",mouseupEvent);
-			addEvent(pushBtn,"click",function pushIma(){
-				var data=canvas.toDataURL();
-				var xmlhttp=new XMLHttpRequest();
-				xmlhttp.open("POST",method,true);
-				xmlhttp.onreadystatechange=function(){
-					if(xmlhttp.readyState==4&&xmlhttp.status==200){
-						alert(xmlhttp.responseText);
-						viewbox.removeChild(canvas);
-						removeEvent(pushBtn,"click",pushIma);
-						canvas=null;
-					}
-				}
-				xmlhttp.send(JSON.stringify({title:"avatar",data:data}));
-			})
+			removeEvent(pushBtn,"click",pushImg);
+			pushBtn.disabled=false;
+			finishBtn.disabled=true;
+			isFinish=true;
+			addEvent(pushBtn,"click",pushImg)
 		}
 	})
 
+	//提交按钮事件
+	function pushImg(){
+		var data=canvas.toDataURL();
+		var xmlhttp=new XMLHttpRequest();
+		xmlhttp.open("POST",method,true);
+		xmlhttp.onreadystatechange=function(){
+			if(xmlhttp.readyState==4&&xmlhttp.status==200){
+				alert(xmlhttp.responseText);
+				viewbox.removeChild(canvas);
+				removeEvent(pushBtn,"click",pushImg);
+				canvas=null;
+				finishBtn.disabled=true;
+				pushBtn.disabled=true;
+			}
+		}
+		xmlhttp.send(JSON.stringify({title:"avatar",data:data}));
+	}
+
 	function processFiles(files){
+		pushBtn.disabled=true;
 		var file=files[0];
 		var reader=new FileReader();
 		reader.onload=function(e){
@@ -108,6 +124,7 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 			Img.onload=function(){
 				isReelect=true;
 				fillCanvas();
+				finishBtn.disabled=false;
 			}
 		}
 		reader.readAsDataURL(file);
@@ -131,6 +148,7 @@ function getFileImg(fileBtn,viewbox,finishBtn,pushBtn,method){
 			lastX=null;
 			lastY=null;
 			isReverse=false;
+			isFinish=false;
 			addEvent(canvas,"mousemove",mousemoveEvent);
 		}
 		ctx.clearRect(0,0,canvas.width,canvas.height);
